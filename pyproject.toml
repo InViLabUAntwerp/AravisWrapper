@@ -22,7 +22,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
-[tool.cibuildwheel.linux]
+[tool.cibuildwheel]
 manylinux-x86_64-image = "manylinux_2_28"
 
 [tool.setuptools]
