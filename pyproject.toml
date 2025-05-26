@@ -27,12 +27,12 @@ include-package-data = true
 packages = ["camera_reader"]
 
 [tool.setuptools.package-data]
-camera_reader = [
-    "_vendor/linux_x86_64/*",
-    "_vendor/linux_aarch64/*",
-    "_vendor/macosx_*/*",
-    "_vendor/win_*/*",
-]
+"camera_reader._vendor.linux_x86_64" = ["libaravis-0.8.so*", "Aravis-0.8.typelib"]
+"camera_reader._vendor.linux_arm64" = ["libaravis-0.8.so*", "Aravis-0.8.typelib"]
+"camera_reader._vendor.macosx_x86_64" = ["libaravis-0.8.dylib", "Aravis-0.8.typelib"]
+"camera_reader._vendor.macosx_arm64" = ["libaravis-0.8.dylib", "Aravis-0.8.typelib"]
+"camera_reader._vendor.win_amd64" = ["libaravis-0.8.dll", "Aravis-0.8.typelib"]
+"camera_reader._vendor.win_arm64" = ["libaravis-0.8.dll", "Aravis-0.8.typelib"]
 
 [[tool.setuptools.ext-modules]]
 name = "_platform_tag"
