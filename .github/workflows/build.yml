@@ -121,9 +121,9 @@ jobs:
           echo "CIBW_BUILD=cp${ver_nodot}-*" >> $GITHUB_ENV
           echo "CIBW_ARCHS=x86_64 aarch64" >> $GITHUB_ENV
           echo "CIBW_ENVIRONMENT_MACOS=MACOSX_DEPLOYMENT_TARGET=15.0" >> $GITHUB_ENV
-          echo "CIBW_REPAIR_WHEEL_COMMAND=bash -c 'mkdir -p {wheel}/camera_reader/_vendor && cp -r camera_reader/_vendor/* {wheel}/camera_reader/_vendor/'" >> $GITHUB_ENV
-          echo "CIBW_REPAIR_WHEEL_COMMAND_WINDOWS=powershell -Command \"mkdir (Resolve-Path \$env:WHEEL)\\camera_reader\\_vendor -ea 0; Copy-Item -Recurse camera_reader\\_vendor\\* (Resolve-Path \$env:WHEEL)\\camera_reader\\_vendor\"" >> $GITHUB_ENV
-      - run: python -m pip install --upgrade cibuildwheel==2.23.3
+          echo "CIBW_REPAIR_WHEEL_COMMAND=bash -eux -c 'pip install wheel && wheel unpack {wheel} -d /tmp/unpack && pkgdir=$(find /tmp/unpack -mindepth 1 -maxdepth 1 -type d) && mkdir -p \"$pkgdir/camera_reader/_vendor\" && cp -r camera_reader/_vendor/* \"$pkgdir/camera_reader/_vendor/\" && wheel pack \"$pkgdir\" -d {dest_dir}'" >> $GITHUB_ENV
+          echo "CIBW_REPAIR_WHEEL_COMMAND_WINDOWS=powershell -Command \"pip install wheel; wheel unpack {wheel} -d $env:TEMP\\unpack; \$pkgdir = (Get-ChildItem $env:TEMP\\unpack | Where-Object { \$_.PSIsContainer } | Select-Object -First 1).FullName; New-Item -ItemType Directory -Path (\$pkgdir + '\\camera_reader\\_vendor') -ea 0; Copy-Item -Recurse camera_reader\\_vendor\\* (\$pkgdir + '\\camera_reader\\_vendor'); wheel pack \$pkgdir -d {dest_dir}\"" >> $GITHUB_ENV
+      - run: python -m pip install --upgrade cibuildwheel==2.23.3 wheel
       - uses: pypa/cibuildwheel@v2.23.3
         with:
           output-dir: wheelhouse
