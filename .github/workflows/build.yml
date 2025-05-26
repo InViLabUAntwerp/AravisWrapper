@@ -7,22 +7,18 @@ concurrency:
 on:
   pull_request: {}
   push:
-    tags: ['v*']
+    tags:
+      - 'v*'
 
 jobs:
   seed-linux:
-    name: Seed Linux Vendors
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up QEMU for multi-arch
-        uses: docker/setup-qemu-action@v2
+      - uses: docker/setup-qemu-action@v2
         with:
           platforms: linux/amd64,linux/arm64
-
-      - name: Vendor Linux Libraries
-        run: |
+      - run: |
           ARCH=$(uname -m)
           if [ "$ARCH" = "x86_64" ]; then
             PLATFORM="linux/amd64"
@@ -31,36 +27,28 @@ jobs:
             PLATFORM="linux/arm64"
             LIBDIR="aarch64-linux-gnu"
           fi
-          OUT_DIR="camera_reader/_vendor/linux_${ARCH}"
+          OUT_DIR="camera_reader/_vendor/linux_$ARCH"
           mkdir -p "$OUT_DIR"
           docker run --rm --platform "$PLATFORM" \
-            -v "$(pwd)/$OUT_DIR":/vendor \
-            ubuntu:22.04 bash -c "\
+            -v "$(pwd)/$OUT_DIR":/vendor ubuntu:22.04 bash -c "\
               apt-get update && \
               apt-get install -y libaravis-0.8-0 gir1.2-aravis-0.8 && \
               cp /usr/lib/${LIBDIR}/libaravis-0.8.so* /vendor/ && \
               cp /usr/lib/${LIBDIR}/girepository-1.0/Aravis-0.8.typelib /vendor/"
-
-      - name: Upload Linux Artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: vendor-linux
           path: camera_reader/_vendor/linux_*
 
   seed-macos:
-    name: Seed macOS Vendors
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Cache Homebrew
-        uses: actions/cache@v3
+      - uses: actions/cache@v3
         with:
           path: /Users/runner/Library/Caches/Homebrew
           key: ${{ runner.os }}-homebrew-cache
-
-      - name: Vendor macOS Libraries
-        run: |
+      - run: |
           brew update
           brew install aravis pygobject3 || true
           for arch in x86_64 arm64; do
@@ -69,109 +57,79 @@ jobs:
             cp "$(brew --prefix)/lib/libaravis-0.8.dylib" "$out/"
             cp "$(brew --prefix)/lib/girepository-1.0/Aravis-0.8.typelib" "$out/"
           done
-
-      - name: Upload macOS Artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: vendor-macos
           path: camera_reader/_vendor/macosx_*
 
   seed-windows:
-    name: Seed Windows Vendors
     runs-on: windows-latest
     defaults:
       run:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup MSYS2 (skip full upgrade)
-        uses: msys2/setup-msys2@v2
+      - uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: false
-
-      - name: Sync DB & Install x64 Aravis
-        run: |
+      - run: |
           pacman -Sy --noconfirm
           pacman -S --noconfirm mingw-w64-x86_64-aravis mingw-w64-x86_64-gobject-introspection
           mkdir -p camera_reader/_vendor/win_amd64
           cp /mingw64/bin/libaravis-0.8-0.dll camera_reader/_vendor/win_amd64/
           cp /mingw64/lib/girepository-1.0/Aravis-0.8.typelib camera_reader/_vendor/win_amd64/
-
-      - name: Setup ARM64 shell & Install ARM64 Aravis
-        uses: msys2/setup-msys2@v2
+      - uses: msys2/setup-msys2@v2
         with:
           msystem: CLANGARM64
           update: false
-
-      - name: Sync DB & Install aarch64 Aravis
-        run: |
+      - run: |
           pacman -Sy --noconfirm
-          pacman -S --noconfirm \
-            mingw-w64-clang-aarch64-aravis \
-            mingw-w64-clang-aarch64-gobject-introspection
+          pacman -S --noconfirm mingw-w64-clang-aarch64-aravis mingw-w64-clang-aarch64-gobject-introspection
           mkdir -p camera_reader/_vendor/win_arm64
           cp /clangarm64/bin/libaravis-0.8-0.dll camera_reader/_vendor/win_arm64/
           cp /clangarm64/lib/girepository-1.0/Aravis-0.8.typelib camera_reader/_vendor/win_arm64/
-
-      - name: Upload Windows Artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: vendor-windows
           path: camera_reader/_vendor/win_*
 
   build-wheels:
-    name: Build & Package Wheels
     needs: [seed-linux, seed-macos, seed-windows]
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.10', '3.11', '3.12']
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download vendor artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          path: camera_reader/_vendor
-
-      - name: Set up QEMU for multi-arch
-        uses: docker/setup-qemu-action@v2
+          path: vendor-artifacts
+      - run: |
+          mkdir -p camera_reader/_vendor
+          find vendor-artifacts -type d -path "*/camera_reader/_vendor/*" -exec cp -r {} camera_reader/_vendor/ \;
+      - uses: docker/setup-qemu-action@v2
         with:
           platforms: linux/amd64,linux/arm64
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-
-      - name: Prepare cibuildwheel environment
-        run: |
+      - run: |
           ver="${{ matrix.python-version }}"
           ver_nodot="${ver//./}"
-          {
-            echo "CIBW_BUILD=cp${ver_nodot}-*"
-            echo "CIBW_ARCHS=x86_64 aarch64"
-            echo "CIBW_ENVIRONMENT_MACOS=MACOSX_DEPLOYMENT_TARGET=15.0"
-            echo "CIBW_REPAIR_WHEEL_COMMAND=\"bash -c 'cp -r camera_reader/_vendor {wheel}/camera_reader'\""
-            echo "CIBW_REPAIR_WHEEL_COMMAND_WINDOWS=powershell -Command \"Copy-Item -Recurse camera_reader\\_vendor (Join-Path $env:WHEEL 'camera_reader')\""
-          } >> "$GITHUB_ENV"
-
-      - name: Install cibuildwheel
-        run: python -m pip install --upgrade cibuildwheel==2.23.3
-
-      - name: Build Wheels
-        uses: pypa/cibuildwheel@v2.23.3
+          echo "CIBW_BUILD=cp${ver_nodot}-*" >> $GITHUB_ENV
+          echo "CIBW_ARCHS=x86_64 aarch64" >> $GITHUB_ENV
+          echo "CIBW_ENVIRONMENT_MACOS=MACOSX_DEPLOYMENT_TARGET=15.0" >> $GITHUB_ENV
+          echo "CIBW_REPAIR_WHEEL_COMMAND=bash -c 'mkdir -p {wheel}/camera_reader/_vendor && cp -r camera_reader/_vendor/* {wheel}/camera_reader/_vendor/'" >> $GITHUB_ENV
+          echo "CIBW_REPAIR_WHEEL_COMMAND_WINDOWS=powershell -Command \"mkdir (Resolve-Path \$env:WHEEL)\\camera_reader\\_vendor -ea 0; Copy-Item -Recurse camera_reader\\_vendor\\* (Resolve-Path \$env:WHEEL)\\camera_reader\\_vendor\"" >> $GITHUB_ENV
+      - run: python -m pip install --upgrade cibuildwheel==2.23.3
+      - uses: pypa/cibuildwheel@v2.23.3
         with:
           output-dir: wheelhouse
-
-      - name: Repair Linux Wheels
-        if: runner.os == 'Linux'
+      - if: runner.os == 'Linux'
         run: |
-          pip install auditwheel
+          python -m pip install auditwheel
           mkdir -p repaired
           for whl in wheelhouse/*.whl; do
             if [[ "$whl" == *x86_64*.whl ]]; then
@@ -180,31 +138,23 @@ jobs:
               cp "$whl" repaired/
             fi
           done
-
-      - name: Delocate macOS Wheels
-        if: runner.os == 'macOS'
+      - if: runner.os == 'macOS'
         run: |
-          pip install delocate-wheel
+          python -m pip install delocate-wheel
           mkdir -p repaired
           delocate-wheel -w repaired wheelhouse/*.whl
-
-      - name: Upload Wheels Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.python-version }}
           path: repaired/*.whl
 
   publish:
-    name: Publish Release
     needs: build-wheels
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - name: Download all wheel artifacts
-        uses: actions/download-artifact@v4
-
-      - name: Create GitHub Release and upload assets
-        uses: softprops/action-gh-release@v1
+      - uses: actions/download-artifact@v4
+      - uses: softprops/action-gh-release@v1
         with:
           files: '**/*.whl'
         env:
