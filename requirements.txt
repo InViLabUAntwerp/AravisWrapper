@@ -1,0 +1,7 @@
+pip~=25.1
+setuptools~=78.1.0
+opencv-python~=4.11.0.86
+PyGObject~=3.52.3
+numpy~=2.2.5
+wheel~=0.45.1
+build==1.2.2.post1

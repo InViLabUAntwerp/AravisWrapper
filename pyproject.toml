@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=74.1", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "camera_reader"
+version = "0.1.0"
+description = "GenICam camera reader with vendored Aravis & PyGObject"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "opencv-python",
+    "pygobject",
+]
+license = "MIT"
+authors = [
+    { name = "Julien Callens" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+[tool.setuptools]
+include-package-data = true
+packages = ["camera_reader"]
+
+[tool.setuptools.package-data]
+"camera_reader._vendor.linux_x86_64" = ["libaravis-0.8.so*", "Aravis-0.8.typelib"]
+"camera_reader._vendor.linux_arm64" = ["libaravis-0.8.so*", "Aravis-0.8.typelib"]
+"camera_reader._vendor.macosx_x86_64" = ["libaravis-0.8.dylib", "Aravis-0.8.typelib"]
+"camera_reader._vendor.macosx_arm64" = ["libaravis-0.8.dylib", "Aravis-0.8.typelib"]
+"camera_reader._vendor.win_amd64" = ["libaravis-0.8.dll", "Aravis-0.8.typelib"]
+"camera_reader._vendor.win_arm64" = ["libaravis-0.8.dll", "Aravis-0.8.typelib"]
+
+[[tool.setuptools.ext-modules]]
+name = "_platform_tag"
+sources = ["camera_reader/_platform_tag.c"]
