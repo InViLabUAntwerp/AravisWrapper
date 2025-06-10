@@ -128,9 +128,7 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.10', '3.11', '3.12']
-        build-tag: ['310', '311', '312']
     env:
-      CIBW_BUILD: "cp3*-*"
       CIBW_ARCHS_MACOS: "x86_64 arm64"
       CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=11.0"
       CIBW_REPAIR_WHEEL_COMMAND_MACOS: "bash -c 'delocate-wheel -w {dest_dir} {wheel} || cp {wheel} {dest_dir}/'"
