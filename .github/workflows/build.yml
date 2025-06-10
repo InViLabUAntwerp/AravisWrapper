@@ -104,7 +104,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
+        python-version: [ '3.10', '3.11', '3.12' ]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -127,7 +127,7 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
+        python-version: [ '3.10', '3.11', '3.12' ]
     env:
       CIBW_ARCHS_MACOS: "x86_64 arm64"
       CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=11.0"
@@ -142,8 +142,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - run: pip install build delocate-wheel
-      - run: python -m build --wheel --outdir wheelhouse .
+      - run: pip install build delocate
+      - run: |
+          # repair each wheel in-place into a “fixed” directory
+          for whl in wheelhouse/*.whl; do
+            delocate-wheel -w wheelhouse/fixed "${whl}"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-macos-${{ matrix.python-version }}
@@ -154,7 +158,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
+        python-version: [ '3.10', '3.11', '3.12' ]
     env:
       CIBW_BUILD: "cp3*-*"
     steps:
@@ -176,7 +180,7 @@ jobs:
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [build-linux, build-macos, build-windows]
+    needs: [ build-linux, build-macos, build-windows ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
