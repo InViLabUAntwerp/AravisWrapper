@@ -1,94 +1,191 @@
 import ctypes
-from typing import Tuple, Any, Union, Optional
+import os
+import platform
+import sys
+from ctypes import POINTER
+from ctypes.util import find_library
+from pathlib import Path
+from typing import Any, Tuple, Union, Optional
 
 import cv2
-import gi
 import numpy as np
 
-__all__ = ["CameraReader", "num_cams"]
+print(f"[DEBUG] Imported aravis-wrapper module (platform={platform.platform()}, cwd={Path().resolve()})", file=sys.stderr)
 
-from cv2 import Mat
-from numpy import ndarray, dtype
+_SYSTEM = platform.system().lower()
+print(f"[DEBUG] Detected platform.system().lower() = {_SYSTEM!r}", file=sys.stderr)
 
-gi.require_version("Aravis", "0.8")
-from gi.repository import Aravis
+if _SYSTEM == "windows":
+    dll_dir = Path(__file__).with_name("aravis_runtime")
+    if not dll_dir.is_dir():
+        raise RuntimeError(f"Missing DLL folder: {dll_dir}")
+    os.add_dll_directory(str(dll_dir))
 
-_FMT_MAP = {  # Pixel‑format → NumPy/OpenCV conversion map
-    Aravis.PIXEL_FORMAT_MONO_8: dict(dtype=np.uint8, ch=1, cv_code=None),
-    Aravis.PIXEL_FORMAT_MONO_16: dict(dtype=np.uint16, ch=1, cv_code=None),
-    Aravis.PIXEL_FORMAT_BAYER_RG_8: dict(dtype=np.uint8, ch=1, cv_code=cv2.COLOR_BAYER_RG2BGR),
-    Aravis.PIXEL_FORMAT_BAYER_GR_8: dict(dtype=np.uint8, ch=1, cv_code=cv2.COLOR_BAYER_GR2BGR),
-    Aravis.PIXEL_FORMAT_BAYER_BG_8: dict(dtype=np.uint8, ch=1, cv_code=cv2.COLOR_BAYER_BG2BGR),
-    Aravis.PIXEL_FORMAT_BAYER_GB_8: dict(dtype=np.uint8, ch=1, cv_code=cv2.COLOR_BAYER_GB2BGR),
-    Aravis.PIXEL_FORMAT_RGB_8_PACKED: dict(dtype=np.uint8, ch=3, cv_code=None),
-    Aravis.PIXEL_FORMAT_BGR_8_PACKED: dict(dtype=np.uint8, ch=3, cv_code=None),
+_SUBDIR = "aravis_runtime"
+
+c_uint = ctypes.c_uint
+c_int = ctypes.c_int
+c_char_p = ctypes.c_char_p
+c_void_p = ctypes.c_void_p
+
+
+def _candidate_names() -> list[str]:
+    if _SYSTEM == "linux":
+        return ["libaravis-0.8.so.0", "libaravis-0.8.so", "libaravis.so"]
+    if _SYSTEM == "darwin":
+        return ["libaravis-0.8.dylib", "libaravis.dylib"]
+    if _SYSTEM == "windows":
+        return ["libaravis-0.8-0.dll", "aravis-0.8.dll", "aravis-0.dll"]
+    raise RuntimeError(f"Unsupported OS {_SYSTEM!r}")
+
+
+def _find_lib() -> str:
+    here = Path(__file__).resolve().parent
+    subdir = here / _SUBDIR
+    for name in _candidate_names():
+        for base in (subdir, here):
+            cand = base / name
+            if cand.exists():
+                return str(cand)
+    wildcard = "libaravis*" if _SYSTEM != "windows" else "*aravis*.dll"
+    try:
+        cand = next(subdir.glob(wildcard))
+        return str(cand)
+    except StopIteration:
+        pass
+    found = find_library("aravis-0.8") or find_library("aravis")
+    if found:
+        return found
+    raise RuntimeError(
+        "Aravis 0.8 library not found.\n"
+        "Expected it in 'aravis_runtime' beside reader.py, or on the system library path."
+    )
+
+
+_lib_path = _find_lib()
+print(f"[DEBUG] Loading C library from: {_lib_path}", file=sys.stderr)
+_LIB = ctypes.CDLL(_lib_path)
+
+_LIB.arv_update_device_list.restype = None
+_LIB.arv_get_n_devices.restype = c_uint
+_LIB.arv_get_device_id.restype = c_char_p
+ArvCamera = c_void_p
+ArvBuffer = c_void_p
+ArvStream = c_void_p
+_LIB.arv_camera_new.restype = ArvCamera
+_LIB.arv_camera_new.argtypes = [c_char_p, c_void_p]
+_LIB.arv_camera_get_pixel_format.restype = c_uint
+_LIB.arv_camera_set_pixel_format.argtypes = [ArvCamera, c_uint]
+_LIB.arv_camera_get_payload.restype = c_uint
+_LIB.arv_camera_create_stream.restype = ArvStream
+_LIB.arv_camera_create_stream.argtypes = [ArvCamera, c_void_p, c_void_p]
+_LIB.arv_camera_start_acquisition.argtypes = [ArvCamera]
+_LIB.arv_camera_stop_acquisition.argtypes = [ArvCamera]
+_LIB.arv_camera_get_exposure_time.restype = ctypes.c_double
+_LIB.arv_camera_set_exposure_time.argtypes = [ArvCamera, ctypes.c_double]
+_LIB.arv_camera_get_gain.restype = ctypes.c_double
+_LIB.arv_camera_set_gain.argtypes = [ArvCamera, ctypes.c_double]
+_LIB.arv_camera_get_frame_rate.restype = ctypes.c_double
+_LIB.arv_camera_set_frame_rate.argtypes = [ArvCamera, ctypes.c_double]
+_LIB.arv_stream_push_buffer.argtypes = [ArvStream, ArvBuffer]
+_LIB.arv_stream_timeout_pop_buffer.restype = ArvBuffer
+_LIB.arv_stream_timeout_pop_buffer.argtypes = [ArvStream, c_uint]
+_LIB.arv_stream_pop_buffer.restype = ArvBuffer
+_LIB.arv_stream_pop_buffer.argtypes = [ArvStream]
+_LIB.arv_buffer_new_allocate.restype = ArvBuffer
+_LIB.arv_buffer_new_allocate.argtypes = [c_uint]
+_LIB.arv_camera_get_pixel_format.argtypes = [ArvCamera]
+_LIB.arv_camera_get_payload.argtypes = [ArvCamera]
+_LIB.arv_buffer_get_status.argtypes = [ArvBuffer]
+_LIB.arv_buffer_get_image_width.argtypes = [ArvBuffer]
+_LIB.arv_buffer_get_image_height.argtypes = [ArvBuffer]
+_LIB.arv_buffer_get_data.argtypes = [ArvBuffer]
+_LIB.arv_buffer_get_status.restype = c_int
+_LIB.arv_buffer_get_image_width.restype = c_int
+_LIB.arv_buffer_get_image_height.restype = c_int
+_LIB.arv_buffer_get_data.restype = c_void_p
+
+PF = {
+    "MONO_8": 0x01080001,
+    "MONO_16": 0x01100007,
+    "BAYER_RG_8": 0x01080009,
+    "BAYER_GR_8": 0x0108000A,
+    "BAYER_BG_8": 0x0108000B,
+    "BAYER_GB_8": 0x0108000C,
+    "RGB_8_PACKED": 0x02180014,
+    "BGR_8_PACKED": 0x02180015,
+}
+_FMT_MAP = {
+    PF["MONO_8"]: dict(dtype=np.uint8, ch=1, cv_code=None),
+    PF["MONO_16"]: dict(dtype=np.uint16, ch=1, cv_code=None),
+    PF["BAYER_RG_8"]: dict(dtype=np.uint8, ch=1, cv_code=cv2.COLOR_BAYER_RG2BGR),
+    PF["BAYER_GR_8"]: dict(dtype=np.uint8, ch=1, cv_code=cv2.COLOR_BAYER_GR2BGR),
+    PF["BAYER_BG_8"]: dict(dtype=np.uint8, ch=1, cv_code=cv2.COLOR_BAYER_BG2BGR),
+    PF["BAYER_GB_8"]: dict(dtype=np.uint8, ch=1, cv_code=cv2.COLOR_BAYER_GB2BGR),
+    PF["RGB_8_PACKED"]: dict(dtype=np.uint8, ch=3, cv_code=None),
+    PF["BGR_8_PACKED"]: dict(dtype=np.uint8, ch=3, cv_code=None),
 }
 
 
-def num_cams():
-    return Aravis.get_n_interfaces()
+def num_cams() -> int:
+    _LIB.arv_update_device_list()
+    return _LIB.arv_get_n_devices()
 
 
-def _numpy_from_buffer(ptr: ctypes.POINTER(ctypes.c_uint8),
-                       h: int, w: int, info: dict) -> np.ndarray:  # Helper: safe NumPy view from DMA buffer
+def _numpy_from_buffer(ptr: POINTER(ctypes.c_uint8), h: int, w: int, info: dict) -> np.ndarray:
     if info["ch"] == 1:
-        arr = np.ctypeslib.as_array(ptr, (h, w)).view(info["dtype"])
+        arr = np.ctypeslib.as_array(ptr, shape=(h, w)).view(info["dtype"])
     else:
-        arr = (
-            np.ctypeslib.as_array(ptr, (h, w * info["ch"]))
-            .view(info["dtype"])
-            .reshape(h, w, info["ch"])
-        )
+        arr = np.ctypeslib.as_array(ptr, shape=(h, w * info["ch"])).view(info["dtype"]).reshape(h, w, info["ch"])
     return arr
 
 
 class CameraReader:
-    def __init__(self,
-                 cam_id: int | str | None = None,
-                 *, n_buffers: int = 12):
-
-        Aravis.update_device_list()  # refresh hot-plug list :contentReference[oaicite:0]{index=0}
-        n_dev = Aravis.get_n_devices()
+    def __init__(self, cam_id: Union[int, str, None] = None, *, n_buffers: int = 3):
+        _LIB.arv_update_device_list()
+        n_dev = _LIB.arv_get_n_devices()
         if n_dev == 0:
             raise RuntimeError("No GenICam camera detected")
-
-        # ---------- resolve cam_id → device-id string ---------- #
         if cam_id is None:
-            if n_dev == 1:  # auto-select the only camera
-                device_id = Aravis.get_device_id(0)
+            if n_dev == 1:
+                raw_id = _LIB.arv_get_device_id(0)
+                device_id = raw_id.decode("utf-8")
             else:
                 raise RuntimeError("Multiple cameras connected – pass an index or serial substring")
         elif isinstance(cam_id, int):
             if not (0 <= cam_id < n_dev):
                 raise RuntimeError(f"Invalid camera index {cam_id}")
-            device_id = Aravis.get_device_id(cam_id)
-        else:  # cam_id is str  →  match by (sub)string
+            raw_id = _LIB.arv_get_device_id(cam_id)
+            device_id = raw_id.decode("utf-8")
+        else:
             cam_id_lc = cam_id.lower()
-            # 1) exact & case-insensitive match
-            exact = [i for i in range(n_dev)
-                     if Aravis.get_device_id(i).lower() == cam_id_lc]
-            # 2) fallback: substring match anywhere in the ID
-            sub = [i for i in range(n_dev)
-                   if cam_id_lc in Aravis.get_device_id(i).lower()]
-            hits = exact or sub
+            exact_hits = []
+            substr_hits = []
+            for i in range(n_dev):
+                raw = _LIB.arv_get_device_id(i)
+                text = raw.decode("utf-8")
+                if text.lower() == cam_id_lc:
+                    exact_hits.append((i, text))
+                elif cam_id_lc in text.lower():
+                    substr_hits.append((i, text))
+            hits = exact_hits if exact_hits else substr_hits
             if len(hits) == 1:
-                device_id = Aravis.get_device_id(hits[0])
+                device_id = hits[0][1]
             elif len(hits) == 0:
                 raise RuntimeError(f"No camera contains id '{cam_id}'")
             else:
-                raise RuntimeError(
-                    f"Serial '{cam_id}' matches several cameras: "
-                    + ", ".join(Aravis.get_device_id(i) for i in hits))
-
-        # ---------- open device ---------- #
-        self._cam: Aravis.Camera = Aravis.Camera.new(device_id)
+                multiples = ", ".join(t for (_, t) in hits)
+                raise RuntimeError(f"Serial '{cam_id}' matches several cameras: {multiples}")
+        device_id_bytes = device_id.encode("utf-8")
+        self._cam: ArvCamera = _LIB.arv_camera_new(device_id_bytes, None)
+        if not self._cam:
+            raise RuntimeError(f"Failed to open camera with ID '{device_id}'")
         self._n_buf = n_buffers
-        self._stream: Optional[Aravis.Stream] = None
-        self._info = _FMT_MAP.get(self._cam.get_pixel_format())
+        self._stream: Optional[ArvStream] = None
+        pix = _LIB.arv_camera_get_pixel_format(self._cam)
+        self._info = _FMT_MAP.get(pix)
         if self._info is None:
-            raise RuntimeError(
-                f"Unsupported pixel format 0x{self._cam.get_pixel_format():08X}"
-            )
+            raise RuntimeError(f"Unsupported pixel format 0x{pix:08X}")
 
     def __enter__(self):
         self.start()
@@ -98,154 +195,45 @@ class CameraReader:
         self.stop()
 
     def start(self):
-        try:
-            payload = self._cam.get_payload()
-            self._stream = self._cam.create_stream(None, None)
-            if self._stream is None:
-                raise RuntimeError("Failed to create camera stream")
-
-            for _ in range(self._n_buf):
-                buffer = Aravis.Buffer.new_allocate(payload)
-                if buffer is None:
-                    raise RuntimeError("Failed to allocate buffer")
-                self._stream.push_buffer(buffer)
-
-            self._cam.start_acquisition()
-        except Exception as e:
-            self.stop()  # Clean up if there's an error
-            raise RuntimeError(f"Failed to start camera: {str(e)}")
+        payload = _LIB.arv_camera_get_payload(self._cam)
+        self._stream = _LIB.arv_camera_create_stream(self._cam, None, None)
+        if not self._stream:
+            raise RuntimeError("Failed to create camera stream")
+        for _ in range(self._n_buf):
+            buf = _LIB.arv_buffer_new_allocate(payload)
+            _LIB.arv_stream_push_buffer(self._stream, buf)
+        _LIB.arv_camera_start_acquisition(self._cam)
 
     def stop(self):
-        if self._cam:
-            self._cam.stop_acquisition()
-        if self._stream:
-            self._stream.pop_buffer()
+        if hasattr(self, "_cam") and self._cam:
+            _LIB.arv_camera_stop_acquisition(self._cam)
+        if hasattr(self, "_stream") and self._stream:
+            _LIB.arv_stream_pop_buffer(self._stream)
         self._stream = None
+        self._cam = None
 
-    def get_feature(self, name: str) -> Any:
-        """Generic GenICam getter (string → best‑fit python type)."""
-        return self._cam.get_feature(name)
-
-    def set_feature(self, name: str, value: Any) -> None:
-        """Generic GenICam setter (string, value)."""
-        self._cam.set_feature(name, value)
-
-    @property
-    def exposure_time(self) -> float:
-        """Exposure in *microseconds*."""
-        return self._cam.get_exposure_time()
-
-    @exposure_time.setter
-    def exposure_time(self, value: float):
-        self._cam.set_exposure_time(value)
-
-    @property
-    def exposure_auto(self) -> bool:
-        return bool(self._cam.get_exposure_time_auto())
-
-    @exposure_auto.setter
-    def exposure_auto(self, enable: bool):
-        self._cam.set_exposure_time_auto(enable)
-
-    @property
-    def gain(self) -> float:
-        return self._cam.get_gain()
-
-    @gain.setter
-    def gain(self, value: float):
-        self._cam.set_gain(value)
-
-    @property
-    def gain_auto(self) -> bool:
-        return bool(self._cam.get_gain_auto())
-
-    @gain_auto.setter
-    def gain_auto(self, enable: bool):
-        self._cam.set_gain_auto(enable)
-
-    @property
-    def frame_rate(self) -> float:
-        return self._cam.get_frame_rate()
-
-    @frame_rate.setter
-    def frame_rate(self, hz: float):
-        self._cam.set_frame_rate(hz)
-
-    @property
-    def pixel_format(self) -> int:
-        return self._cam.get_pixel_format()
-
-    @pixel_format.setter
-    def pixel_format(self, pix: int):
-        self._cam.set_pixel_format(pix)
-        # Update conversion map information
-        self._info = _FMT_MAP.get(pix) or self._info
-
-    @property
-    def region(self) -> Tuple[int, int, int, int]:
-        """(x, y, width, height) in sensor pixels."""
-        return self._cam.get_region()
-
-    def set_region(self, x: int, y: int, w: int, h: int):
-        self._cam.set_region(x, y, w, h)
-
-    @property
-    def acquisition_mode(self) -> Aravis.AcquisitionMode:
-        return self._cam.get_acquisition_mode()
-
-    @acquisition_mode.setter
-    def acquisition_mode(self, mode: Union[Aravis.AcquisitionMode, str]):
-        if isinstance(mode, str):
-            self._cam.set_acquisition_mode_from_string(mode)
-        else:
-            self._cam.set_acquisition_mode(mode)
-
-    @property
-    def binning(self) -> Tuple[int, int]:
-        dx, dy = ctypes.c_int(), ctypes.c_int()
-        self._cam.get_binning(ctypes.byref(dx), ctypes.byref(dy))
-        return dx.value, dy.value
-
-    def set_binning(self, dx: int = 1, dy: int = 1):
-        self._cam.set_binning(dx, dy)
-
-    def read(self, *, jpeg: bool = False, quality: int = 95, timeout_ms = 50) -> bytes | None | ndarray | Mat | ndarray[Any, dtype[Any]]:
-        """Retrieve a single frame.
-
-        Parameters
-        ----------
-        jpeg : bool
-            If *True*, returns JPEG‑compressed bytes; otherwise returns a NumPy
-            array.
-        quality : int
-            JPEG quality (1‑100) when *jpeg* is True.
-        """
-        if self._stream is None:
+    def read(self, *, jpeg: bool = False, quality: int = 95, timeout_ms: int = 100) -> Union[bytes, None, np.ndarray]:
+        if not self._stream:
             raise RuntimeError("Stream not initialized. Call start() before read().")
-
-        buf = self._stream.timeout_pop_buffer(timeout_ms)
-        if buf is None or buf.get_status() != Aravis.BufferStatus.SUCCESS:
+        buf = _LIB.arv_stream_timeout_pop_buffer(self._stream, c_uint(timeout_ms))
+        if not buf:
             return None
-
-        h, w = buf.get_image_height(), buf.get_image_width()
-        addr = buf.get_data()
-        ptr = ctypes.cast(addr, ctypes.POINTER(ctypes.c_uint8))
-
-        frame = _numpy_from_buffer(ptr, h, w, self._info).copy()
-        self._stream.push_buffer(buf)
-
+        status = _LIB.arv_buffer_get_status(buf)
+        if status != 0:
+            _LIB.arv_stream_push_buffer(self._stream, buf)
+            return None
+        h = _LIB.arv_buffer_get_image_height(buf)
+        w = _LIB.arv_buffer_get_image_width(buf)
+        addr = _LIB.arv_buffer_get_data(buf)
+        ptr = ctypes.cast(addr, POINTER(ctypes.c_uint8))
+        frame = _numpy_from_buffer(ptr, h, w, self._info)
+        _LIB.arv_stream_push_buffer(self._stream, buf)
         if self._info["cv_code"] is not None:
             frame = cv2.cvtColor(frame, self._info["cv_code"])
-
         if self._info["dtype"] == np.uint16:
-            frame = (frame / 256).astype(np.uint8)
-
+            frame = (frame // 256).astype(np.uint8)
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         if not jpeg:
             return frame
-
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-
-        ok, enc = cv2.imencode(
-            ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality]
-        )
+        ok, enc = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
         return enc.tobytes() if ok else None

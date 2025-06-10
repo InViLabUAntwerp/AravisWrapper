@@ -1,4 +1,4 @@
-name: Build & Publish Wheels
+name: Build & Publish Aravis Wheels
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -6,13 +6,12 @@ concurrency:
 
 on:
   pull_request: { }
-  push:
-    tags:
-      - 'v*'
+  push: { }
+#    tags: [ 'v*' ]
 
 jobs:
+
   seed-linux:
-    name: Seed Linux Vendors
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,33 +21,27 @@ jobs:
         with:
           platforms: linux/amd64,linux/arm64
 
-      - name: Vendor Linux Libraries
+      - name: Vendor Linux Aravis
         run: |
-          ARCH=$(uname -m)
-          if [ "$ARCH" = "x86_64" ]; then
-            PLATFORM="linux/amd64"
-            LIBDIR="x86_64-linux-gnu"
-          else
-            PLATFORM="linux/arm64"
-            LIBDIR="aarch64-linux-gnu"
+          arch=$(uname -m)
+          libdir="x86_64-linux-gnu"
+          if [[ "$arch" == aarch64* || "$arch" == arm64* ]]; then
+            libdir="aarch64-linux-gnu"
           fi
-          OUT_DIR="camera_reader/_vendor/linux_$ARCH"
-          mkdir -p "$OUT_DIR"
-          docker run --rm --platform "$PLATFORM" \
-            -v "$(pwd)/$OUT_DIR":/vendor \
-            ubuntu:22.04 bash -c "\
+          out="camera_reader/_vendor/linux_${arch}"
+          mkdir -p "$out"
+          docker run --rm --platform "linux/${arch}" \
+            -v "$PWD/$out":/vendor ubuntu:22.04 bash -c "\
               apt-get update && \
               apt-get install -y libaravis-0.8-0 gir1.2-aravis-0.8 && \
-              cp /usr/lib/${LIBDIR}/libaravis-0.8.so* /vendor/ && \
-              cp /usr/lib/${LIBDIR}/girepository-1.0/Aravis-0.8.typelib /vendor/"
-      - name: Upload Linux Artifacts
-        uses: actions/upload-artifact@v4
+              cp /usr/lib/${libdir}/libaravis-0.8.so* /vendor/ && \
+              cp /usr/lib/${libdir}/girepository-1.0/Aravis-0.8.typelib /vendor/"
+      - uses: actions/upload-artifact@v4
         with:
           name: vendor-linux
           path: camera_reader/_vendor/linux_*
 
   seed-macos:
-    name: Seed macOS Vendors
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,26 +50,24 @@ jobs:
         uses: actions/cache@v3
         with:
           path: /Users/runner/Library/Caches/Homebrew
-          key: ${{ runner.os }}-homebrew-cache
+          key: ${{ runner.os }}-homebrew-${{ hashFiles('.github/workflows/build_wheels.yml') }}
 
-      - name: Vendor macOS Libraries
+      - name: Vendor macOS Aravis
         run: |
           brew update
           brew install aravis pygobject3 || true
           for arch in x86_64 arm64; do
-            out=./camera_reader/_vendor/macosx_${arch}
+            out="camera_reader/_vendor/macosx_${arch}"
             mkdir -p "$out"
             cp "$(brew --prefix)/lib/libaravis-0.8.dylib" "$out/"
             cp "$(brew --prefix)/lib/girepository-1.0/Aravis-0.8.typelib" "$out/"
           done
-      - name: Upload macOS Artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: vendor-macos
           path: camera_reader/_vendor/macosx_*
 
   seed-windows:
-    name: Seed Windows Vendors
     runs-on: windows-latest
     defaults:
       run:
@@ -90,98 +81,116 @@ jobs:
           msystem: MINGW64
           update: false
 
-      - name: Sync DB & Install x64 Aravis
+      - name: Vendor Windows Aravis x64
         run: |
           pacman -Sy --noconfirm
           pacman -S --noconfirm mingw-w64-x86_64-aravis mingw-w64-x86_64-gobject-introspection
           mkdir -p camera_reader/_vendor/win_amd64
           cp /mingw64/bin/libaravis-0.8-0.dll camera_reader/_vendor/win_amd64/
           cp /mingw64/lib/girepository-1.0/Aravis-0.8.typelib camera_reader/_vendor/win_amd64/
-      - name: Setup ARM64 shell & Install ARM64 Aravis
+      - name: Setup ARM64 shell
         uses: msys2/setup-msys2@v2
         with:
           msystem: CLANGARM64
           update: false
 
-      - name: Sync DB & Install aarch64 Aravis
+      - name: Vendor Windows Aravis ARM64
         run: |
           pacman -Sy --noconfirm
-          pacman -S --noconfirm \
-            mingw-w64-clang-aarch64-aravis \
-            mingw-w64-clang-aarch64-gobject-introspection
+          pacman -S --noconfirm mingw-w64-clang-aarch64-aravis mingw-w64-clang-aarch64-gobject-introspection
           mkdir -p camera_reader/_vendor/win_arm64
           cp /clangarm64/bin/libaravis-0.8-0.dll camera_reader/_vendor/win_arm64/
           cp /clangarm64/lib/girepository-1.0/Aravis-0.8.typelib camera_reader/_vendor/win_arm64/
-      - name: Upload Windows Artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: vendor-windows
           path: camera_reader/_vendor/win_*
 
-  build-wheels:
-    name: Build & Package Wheels
-    needs: [ seed-linux, seed-macos, seed-windows ]
+  build-linux:
+    needs: seed-linux
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: [ '3.10', '3.11', '3.12' ]
-
+    env:
+      CIBW_BUILD: "cp${{ matrix.python-version || '3.11' | replace('.', '') }}-*"
+      CIBW_ARCHS: "x86_64 aarch64"
+      CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair -w {dest_dir} {wheel}"
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up QEMU for multi-arch
-        uses: docker/setup-qemu-action@v2
+      - uses: actions/download-artifact@v4
         with:
-          platforms: linux/amd64,linux/arm64
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+          name: vendor-linux
+          path: .
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-
-      - name: Prepare cibuildwheel environment
-        run: |
-          ver="${{ matrix.python-version }}"
-          ver_nodot="${ver//./}"
-          echo "CIBW_BUILD=cp${ver_nodot}-*" >> $GITHUB_ENV
-          echo "CIBW_ARCHS=x86_64 aarch64"    >> $GITHUB_ENV
-          echo "CIBW_ENVIRONMENT_MACOS=MACOSX_DEPLOYMENT_TARGET=15.0" >> $GITHUB_ENV
-      - name: Install cibuildwheel
-        run: python -m pip install --upgrade cibuildwheel==2.23.3
-
-      - name: Build Wheels
-        uses: pypa/cibuildwheel@v2.23.3
+      - run: pip install cibuildwheel==2.23.3
+      - run: cibuildwheel --output-dir wheelhouse
+      - uses: actions/upload-artifact@v4
         with:
-          output-dir: wheelhouse
+          name: wheels-linux-${{ matrix.python-version }}
+          path: wheelhouse/*.whl
 
-      - name: Repair Linux Wheels
-        if: runner.os == 'Linux'
-        run: |
-          pip install auditwheel
-          mkdir -p repaired
-          for whl in wheelhouse/*.whl; do
-            if [[ "$whl" == *x86_64*.whl ]]; then
-              auditwheel repair "$whl" -w repaired/
-            else
-              cp "$whl" repaired/
-            fi
-          done
-      - name: Delocate macOS Wheels
-        if: runner.os == 'macOS'
-        run: |
-          pip install delocate-wheel
+  build-macos:
+    needs: seed-macos
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        python-version: [ '3.10', '3.11', '3.12' ]
+    env:
+      CIBW_BUILD: "cp${{ matrix.python-version || '3.11' | replace('.', '') }}-*"
+      CIBW_ARCHS_MACOS: "x86_64 arm64"
+      CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=11.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: vendor-macos
+          path: .
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install cibuildwheel==2.23.3 delocate-wheel
+      - run: cibuildwheel --output-dir wheelhouse
+      - run: |
           mkdir -p repaired
           delocate-wheel -w repaired wheelhouse/*.whl
-      - name: Upload Wheels Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.python-version }}
+          name: wheels-macos-${{ matrix.python-version }}
           path: repaired/*.whl
 
+  build-windows:
+    needs: seed-windows
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: [ '3.10', '3.11', '3.12' ]
+    env:
+      CIBW_BUILD: "cp${{ matrix.python-version || '3.11' | replace('.', '') }}-*"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: vendor-windows
+          path: .
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install cibuildwheel==2.23.3
+      - run: cibuildwheel --output-dir wheelhouse
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows-${{ matrix.python-version }}
+          path: wheelhouse/*.whl
+
   publish:
-    needs: build-wheels
     if: startsWith(github.ref, 'refs/tags/')
+    needs: [ build-linux, build-macos, build-windows ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
