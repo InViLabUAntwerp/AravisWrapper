@@ -112,10 +112,9 @@ jobs:
     strategy:
       matrix:
         python-version: [ '3.10', '3.11', '3.12' ]
-        build-tag: [ '310', '311', '312' ]
 
     env:
-      CIBW_BUILD: "cp${{ matrix.build-tag }}-*"
+      CIBW_BUILD: "cp3*-*"
       CIBW_ARCHS: "x86_64 aarch64"
       CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair -w {dest_dir} {wheel}"
     steps:
@@ -144,7 +143,7 @@ jobs:
 #        build-tag: ['310', '311', '312']
 #
 #    env:
-#      CIBW_BUILD: "cp${{ matrix.build-tag }}-*"
+#      CIBW_BUILD: "cp3*-*"
 #      CIBW_ARCHS_MACOS: "x86_64 arm64"
 #      CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=11.0"
 #    steps:
@@ -173,10 +172,9 @@ jobs:
 #    strategy:
 #      matrix:
 #        python-version: [ '3.10', '3.11', '3.12' ]
-#        build-tag: [ '310', '311', '312' ]
-#
+##
 #    env:
-#      CIBW_BUILD: "cp${{ matrix.build-tag }}-*"
+#      CIBW_BUILD: "cp3*-*"
 #    steps:
 #      - uses: actions/checkout@v4
 #      - uses: actions/download-artifact@v4
