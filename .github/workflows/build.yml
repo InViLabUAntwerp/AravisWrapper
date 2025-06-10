@@ -113,9 +113,6 @@ jobs:
       matrix:
         python-version: [ '3.10', '3.11', '3.12' ]
 
-    env:
-      CIBW_ARCHS: "x86_64 aarch64"
-      CIBW_REPAIR_WHEEL_COMMAND_LINUX: "bash -c 'auditwheel repair -w {dest_dir} {wheel} || cp {wheel} {dest_dir}/'"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -126,18 +123,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - run: pip install cibuildwheel==2.23.3 auditwheel
-      - run: |
-          cibuildwheel --output-dir wheelhouse --pure-wheel || status=$?
-          if [ -n "$status" ] && [ "$status" -ne 0 ] && [ "$status" -ne 4 ] && [ "$status" -ne 5 ]; then
-            exit $status
-          fi
+
+      - run: pip install build
+
+      - run: python -m build --wheel --outdir wheelhouse .
+
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-linux-${{ matrix.python-version }}
           path: wheelhouse/*.whl
 
-  #  build-macos:
+    #  build-macos:
   #    needs: seed-macos
   #    runs-on: macos-latest
   #    strategy:
