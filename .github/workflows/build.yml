@@ -128,7 +128,7 @@ jobs:
           cache: pip
       - run: pip install cibuildwheel==2.23.3 auditwheel
       - run: |
-          cibuildwheel --output-dir wheelhouse || status=$?
+          cibuildwheel --output-dir wheelhouse --pure-wheel || status=$?
           if [ -n "$status" ] && [ "$status" -ne 0 ] && [ "$status" -ne 4 ] && [ "$status" -ne 5 ]; then
             exit $status
           fi
