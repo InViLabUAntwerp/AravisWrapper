@@ -6,8 +6,8 @@ concurrency:
 
 on:
   pull_request: { }
-  push: { }
-#    tags: [ 'v*' ]
+  push:
+    tags: [ 'v*' ]
 
 jobs:
 
@@ -15,12 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up QEMU for multi-arch
         uses: docker/setup-qemu-action@v2
         with:
           platforms: linux/amd64,linux/arm64
-
       - name: Vendor Linux Aravis
         run: |
           arch=$(uname -m)
@@ -41,78 +39,72 @@ jobs:
           name: vendor-linux
           path: camera_reader/_vendor/linux_*
 
-  #  seed-macos:
-  #    runs-on: macos-latest
-  #    steps:
-  #      - uses: actions/checkout@v4
-  #
-  #      - name: Cache Homebrew
-  #        uses: actions/cache@v3
-  #        with:
-  #          path: /Users/runner/Library/Caches/Homebrew
-  #          key: ${{ runner.os }}-homebrew-${{ hashFiles('.github/workflows/build_wheels.yml') }}
-  #
-  #      - name: Vendor macOS Aravis
-  #        run: |
-  #          brew update
-  #          brew install aravis pygobject3 || true
-  #          for arch in x86_64 arm64; do
-  #            out="camera_reader/_vendor/macosx_${arch}"
-  #            mkdir -p "$out"
-  #            cp "$(brew --prefix)/lib/libaravis-0.8.dylib" "$out/"
-  #            cp "$(brew --prefix)/lib/girepository-1.0/Aravis-0.8.typelib" "$out/"
-  #          done
-  #      - uses: actions/upload-artifact@v4
-  #        with:
-  #          name: vendor-macos
-  #          path: camera_reader/_vendor/macosx_*
-  #
-  #  seed-windows:
-  #    runs-on: windows-latest
-  #    defaults:
-  #      run:
-  #        shell: msys2 {0}
-  #    steps:
-  #      - uses: actions/checkout@v4
-  #
-  #      - name: Setup MSYS2 (skip full upgrade)
-  #        uses: msys2/setup-msys2@v2
-  #        with:
-  #          msystem: MINGW64
-  #          update: false
-  #
-  #      - name: Vendor Windows Aravis x64
-  #        run: |
-  #          pacman -Sy --noconfirm
-  #          pacman -S --noconfirm mingw-w64-x86_64-aravis mingw-w64-x86_64-gobject-introspection
-  #          mkdir -p camera_reader/_vendor/win_amd64
-  #          cp /mingw64/bin/libaravis-0.8-0.dll camera_reader/_vendor/win_amd64/
-  #          cp /mingw64/lib/girepository-1.0/Aravis-0.8.typelib camera_reader/_vendor/win_amd64/
-  #      - name: Setup ARM64 shell
-  #        uses: msys2/setup-msys2@v2
-  #        with:
-  #          msystem: CLANGARM64
-  #          update: false
-  #
-  #      - name: Vendor Windows Aravis ARM64
-  #        run: |
-  #          pacman -Sy --noconfirm
-  #          pacman -S --noconfirm mingw-w64-clang-aarch64-aravis mingw-w64-clang-aarch64-gobject-introspection
-  #          mkdir -p camera_reader/_vendor/win_arm64
-  #          cp /clangarm64/bin/libaravis-0.8-0.dll camera_reader/_vendor/win_arm64/
-  #          cp /clangarm64/lib/girepository-1.0/Aravis-0.8.typelib camera_reader/_vendor/win_arm64/
-  #      - uses: actions/upload-artifact@v4
-  #        with:
-  #          name: vendor-windows
-  #          path: camera_reader/_vendor/win_*
+  seed-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache Homebrew
+        uses: actions/cache@v3
+        with:
+          path: /Users/runner/Library/Caches/Homebrew
+          key: ${{ runner.os }}-homebrew-${{ hashFiles('.github/workflows/build_wheels.yml') }}
+      - name: Vendor macOS Aravis
+        run: |
+          brew update
+          brew install aravis pygobject3 || true
+          for arch in x86_64 arm64; do
+            out="camera_reader/_vendor/macosx_${arch}"
+            mkdir -p "$out"
+            cp "$(brew --prefix)/lib/libaravis-0.8.dylib" "$out/"
+            cp "$(brew --prefix)/lib/girepository-1.0/Aravis-0.8.typelib" "$out/"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vendor-macos
+          path: camera_reader/_vendor/macosx_*
+
+  seed-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup MSYS2 (skip full upgrade)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+      - name: Vendor Windows Aravis x64
+        run: |
+          pacman -Sy --noconfirm
+          pacman -S --noconfirm mingw-w64-x86_64-aravis mingw-w64-x86_64-gobject-introspection
+          mkdir -p camera_reader/_vendor/win_amd64
+          cp /mingw64/bin/libaravis-0.8-0.dll camera_reader/_vendor/win_amd64/
+          cp /mingw64/lib/girepository-1.0/Aravis-0.8.typelib camera_reader/_vendor/win_amd64/
+      - name: Setup ARM64 shell
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANGARM64
+          update: false
+      - name: Vendor Windows Aravis ARM64
+        run: |
+          pacman -Sy --noconfirm
+          pacman -S --noconfirm mingw-w64-clang-aarch64-aravis mingw-w64-clang-aarch64-gobject-introspection
+          mkdir -p camera_reader/_vendor/win_arm64
+          cp /clangarm64/bin/libaravis-0.8-0.dll camera_reader/_vendor/win_arm64/
+          cp /clangarm64/lib/girepository-1.0/Aravis-0.8.typelib camera_reader/_vendor/win_arm64/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vendor-windows
+          path: camera_reader/_vendor/win_*
 
   build-linux:
     needs: seed-linux
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [ '3.10', '3.11', '3.12' ]
-
+        python-version: ['3.10', '3.11', '3.12']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -123,76 +115,70 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-
       - run: pip install build
-
       - run: python -m build --wheel --outdir wheelhouse .
-
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-linux-${{ matrix.python-version }}
           path: wheelhouse/*.whl
 
-    #  build-macos:
-  #    needs: seed-macos
-  #    runs-on: macos-latest
-  #    strategy:
-  #      matrix:
-  #        python-version: [ '3.10', '3.11', '3.12' ]
-  #        build-tag: ['310', '311', '312']
-  #
-  #    env:
-  #      CIBW_BUILD: "cp3*-*"
-  #      CIBW_ARCHS_MACOS: "x86_64 arm64"
-  #      CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=11.0"
-  #      CIBW_REPAIR_WHEEL_COMMAND_MACOS: "bash -c 'delocate-wheel -w {dest_dir} {wheel} || cp {wheel} {dest_dir}/'"
-  #    steps:
-  #      - uses: actions/checkout@v4
-  #      - uses: actions/download-artifact@v4
-  #        with:
-  #          name: vendor-macos
-  #          path: .
-  #      - uses: actions/setup-python@v5
-  #        with:
-  #          python-version: ${{ matrix.python-version }}
-  #          cache: pip
-  #      - run: pip install cibuildwheel==2.23.3 delocate-wheel
-  #      - run: cibuildwheel --output-dir wheelhouse
-  #      - uses: actions/upload-artifact@v4
-  #        with:
-  #          name: wheels-macos-${{ matrix.python-version }}
-  #          path: wheelhouse/*.whl
-  #
-  #  build-windows:
-  #    needs: seed-windows
-  #    runs-on: windows-latest
-  #    strategy:
-  #      matrix:
-  #        python-version: [ '3.10', '3.11', '3.12' ]
-  ##
-  #    env:
-  #      CIBW_BUILD: "cp3*-*"
-  #    steps:
-  #      - uses: actions/checkout@v4
-  #      - uses: actions/download-artifact@v4
-  #        with:
-  #          name: vendor-windows
-  #          path: .
-  #      - uses: actions/setup-python@v5
-  #        with:
-  #          python-version: ${{ matrix.python-version }}
-  #          cache: pip
-  #      - run: pip install cibuildwheel==2.23.3
-  #      - run: cibuildwheel --output-dir wheelhouse
-  #      - uses: actions/upload-artifact@v4
-  #        with:
-  #          name: wheels-windows-${{ matrix.python-version }}
-  #          path: wheelhouse/*.whl
+  build-macos:
+    needs: seed-macos
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+        build-tag: ['310', '311', '312']
+    env:
+      CIBW_BUILD: "cp3*-*"
+      CIBW_ARCHS_MACOS: "x86_64 arm64"
+      CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=11.0"
+      CIBW_REPAIR_WHEEL_COMMAND_MACOS: "bash -c 'delocate-wheel -w {dest_dir} {wheel} || cp {wheel} {dest_dir}/'"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: vendor-macos
+          path: .
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install build delocate-wheel
+      - run: python -m build --wheel --outdir wheelhouse .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos-${{ matrix.python-version }}
+          path: wheelhouse/*.whl
+
+  build-windows:
+    needs: seed-windows
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    env:
+      CIBW_BUILD: "cp3*-*"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: vendor-windows
+          path: .
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install build
+      - run: python -m build --wheel --outdir wheelhouse .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows-${{ matrix.python-version }}
+          path: wheelhouse/*.whl
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [ build-linux ]
-    #    needs: [ build-linux, build-macos, build-windows ]
+    needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
