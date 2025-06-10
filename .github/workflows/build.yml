@@ -114,7 +114,6 @@ jobs:
         python-version: [ '3.10', '3.11', '3.12' ]
 
     env:
-      CIBW_BUILD: "cp3*-*"
       CIBW_ARCHS: "x86_64 aarch64"
       CIBW_REPAIR_WHEEL_COMMAND_LINUX: "bash -c 'auditwheel repair -w {dest_dir} {wheel} || cp {wheel} {dest_dir}/'"
     steps:
