@@ -10,11 +10,12 @@ on:
     tags: [ 'v*' ]
 
 jobs:
+
   seed-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up QEMU for multi‑arch
+      - name: Set up QEMU for multi-arch
         uses: docker/setup-qemu-action@v2
         with:
           platforms: linux/amd64,linux/arm64
@@ -115,15 +116,15 @@ jobs:
       - run: python -m build --wheel --outdir wheelhouse .
       - uses: actions/upload-artifact@v4
         with:
-          name: wheel-linux
+          name: wheels-linux
           path: wheelhouse/*.whl
 
   build-macos:
     needs: seed-macos
     runs-on: macos-latest
     env:
-      CIBW_ARCHS_MACOS: 'x86_64 arm64'
-      CIBW_ENVIRONMENT_MACOS: 'MACOSX_DEPLOYMENT_TARGET=11.0'
+      CIBW_ARCHS_MACOS: "x86_64 arm64"
+      CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=11.0"
       CIBW_REPAIR_WHEEL_COMMAND_MACOS: "bash -c 'delocate-wheel -w {dest_dir} {wheel} || cp {wheel} {dest_dir}/'"
     steps:
       - uses: actions/checkout@v4
@@ -139,14 +140,14 @@ jobs:
       - run: python -m build --wheel --outdir wheelhouse .
       - uses: actions/upload-artifact@v4
         with:
-          name: wheel-macos
+          name: wheels-macos
           path: wheelhouse/*.whl
 
   build-windows:
     needs: seed-windows
     runs-on: windows-latest
     env:
-      CIBW_BUILD: 'cp3*-*'
+      CIBW_BUILD: "cp3*-*"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -161,28 +162,17 @@ jobs:
       - run: python -m build --wheel --outdir wheelhouse .
       - uses: actions/upload-artifact@v4
         with:
-          name: wheel-windows
+          name: wheels-windows
           path: wheelhouse/*.whl
 
   publish:
-    name: Publish to GitHub Release
-    needs: [build-linux, build-macos, build-windows]
     if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
     steps:
-      - name: Download all wheels
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
+      - uses: softprops/action-gh-release@v1
         with:
-          path: downloaded-artifacts
-
-      - name: Find and move distribution files to 'dist' directory
-        run: |
-          mkdir dist
-          find downloaded-artifacts -name "*.whl" -exec mv {} dist/ \;
-
-      - name: Create / Update GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: 'dist/*.whl'
+          files: '**/*.whl'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
