@@ -102,6 +102,9 @@ jobs:
   build-linux:
     needs: seed-linux
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ '3.10' ]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -110,18 +113,21 @@ jobs:
           path: .
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
           cache: pip
       - run: pip install build
       - run: python -m build --wheel --outdir wheelhouse .
       - uses: actions/upload-artifact@v4
         with:
-          name: wheels-linux
+          name: wheels-linux-${{ matrix.python-version }}
           path: wheelhouse/*.whl
 
   build-macos:
     needs: seed-macos
     runs-on: macos-latest
+    strategy:
+      matrix:
+        python-version: [ '3.10' ]
     env:
       CIBW_ARCHS_MACOS: "x86_64 arm64"
       CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=11.0"
@@ -134,18 +140,21 @@ jobs:
           path: .
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
           cache: pip
       - run: pip install build delocate
       - run: python -m build --wheel --outdir wheelhouse .
       - uses: actions/upload-artifact@v4
         with:
-          name: wheels-macos
+          name: wheels-macos-${{ matrix.python-version }}
           path: wheelhouse/*.whl
 
   build-windows:
     needs: seed-windows
     runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: [ '3.10' ]
     env:
       CIBW_BUILD: "cp3*-*"
     steps:
@@ -156,23 +165,34 @@ jobs:
           path: .
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
           cache: pip
       - run: pip install build
       - run: python -m build --wheel --outdir wheelhouse .
       - uses: actions/upload-artifact@v4
         with:
-          name: wheels-windows
+          name: wheels-windows-${{ matrix.python-version }}
           path: wheelhouse/*.whl
 
   publish:
+    name: Publish to GitHub Release
+    needs: [ build-linux, build-macos, build-windows ]
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
-      - uses: softprops/action-gh-release@v1
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
         with:
-          files: '**/*.whl'
+          path: downloaded-artifacts
+
+      - name: Find and move distribution files to 'dist' directory
+        run: |
+          mkdir dist
+          find downloaded-artifacts -name "*.whl" -exec mv {} dist/ \;
+
+      - name: Create / Update GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: 'dist/*.whl'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
